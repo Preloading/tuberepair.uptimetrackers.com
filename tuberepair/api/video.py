@@ -1,10 +1,22 @@
+import math
+from pathlib import Path
+import subprocess
+import threading
+
+import requests
+import time
 from modules import get, helpers
-from flask import Blueprint, Flask, request, redirect, render_template, Response
+from flask import Blueprint, Flask, abort, request, redirect, render_template, Response, send_file
 import config
 from modules.logs import print_with_seperator
 from modules import yt
 
 video = Blueprint("video", __name__)
+
+CACHE_DIR = './cache/videos'
+SEGMENT_DURATION = 10  # Duration of each HLS segment in seconds
+INITIAL_SEGMENTS = 3   # Number of segments to encode initially
+FUTURE_SEGMENTS = 2    # Number of future segments to encode after each request
 
 def error():
     return "",404
@@ -190,18 +202,151 @@ def comments(videoid, res=''):
 # fetches video from innertube.
 @video.route("/getvideo/<video_id>")
 @video.route("/<int:res>/getvideo/<video_id>")
-def getvideo(video_id, res=None):
-    if res is not None or config.MEDIUM_QUALITY is False:
+def getvideo(video_id, res=360):
+    # if res is not None or config.MEDIUM_QUALITY is False:
         
-        # Clamp Res
-        if type(res) == int:
-            res = min(max(res, 144), config.RESMAX)
+    #     # Clamp Res
+    #     if type(res) == int:
+    #         res = min(max(res, 144), config.RESMAX)
     
-        # Set mimetype since videole device don't recognized it.
-        return Response(yt.hls_video_url(video_id, res), mimetype="application/vnd.apple.mpegurl")
+    #     # Set mimetype since videole device don't recognized it.
+    #     return Response(yt.hls_video_url(video_id, res), mimetype="application/vnd.apple.mpegurl")
     
-    # 360p if enabled
-    return redirect(yt.medium_quality_video_url(video_id), 307)
+    # # 360p if enabled
+    # return redirect(yt.medium_quality_video_url(video_id), 307)
+    return redirect(f"/video/{video_id}/{res}/play.m3u8", 307)
+
+def download_youtube_video(video_id):
+    """
+    Download YouTube video using yt.medium_quality_video_url and save it as 'original.mp4' in the cache.
+    """
+    input_path = Path(CACHE_DIR) / video_id / "original.mp4"
+    input_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not input_path.exists():
+        video_url = yt.medium_quality_video_url(video_id)
+        print(f"Downloading video from: {video_url}")
+
+        response = requests.get(video_url, stream=True)
+        with open(input_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+    return input_path
+
+def get_video_length(video_path):
+    """
+    Get the length of the video in seconds.
+    """
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
+        capture_output=True,
+        text=True
+    )
+    return float(result.stdout.strip())
+
+def create_master_playlist(video_id, resolution, total_segments):
+    """
+    Create a placeholder master playlist with the expected number of segments.
+    """
+    output_dir = Path(CACHE_DIR) / video_id / resolution
+    playlist_path = output_dir / "master.m3u8"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(playlist_path, 'w') as f:
+        f.write("#EXTM3U\n")
+        f.write("#EXT-X-VERSION:3\n")
+        f.write(f"#EXT-X-TARGETDURATION:{SEGMENT_DURATION}\n")
+        f.write("#EXT-X-PLAYLIST-TYPE:VOD\n")
+        f.write(f"#EXT-X-MEDIA-SEQUENCE:0\n")
+        #f.write("#EXT-X-INDEPENDENT-SEGMENTS\n")
+
+        # List all segments expected for the video duration
+        for segment in range(total_segments):
+            #f.write("#EXT-X-DISCONTINUITY\n")
+            f.write(f"#EXTINF:{SEGMENT_DURATION},\n")
+            f.write(f"{segment}.ts\n")
+
+        f.write("#EXT-X-ENDLIST\n")
+
+def encode_segment(video_id, resolution, start_segment, end_segment):
+    """
+    Encodes specific video segments from 'original.mp4' into HLS .ts segments.
+    """
+    input_path = Path(CACHE_DIR) / video_id / "original.mp4"
+    output_dir:Path = Path(CACHE_DIR) / video_id / resolution
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for segment in range(start_segment, end_segment + 1):
+        print(f"Encoding segment {segment} for video {video_id}")
+        segment_path = output_dir / f"{segment}.ts"
+        lock_file = output_dir / f"{segment}.lock"
+
+        if segment_path.exists() or lock_file.exists():
+            continue  # Skip if already encoded or locked
+
+        lock_file.touch()  # Create lock file
+
+        try:
+            # Encode each segment individually
+            subprocess.run([
+                "ffmpeg", "-i", str(input_path), "-profile:v", "baseline", "-level", "3.0",
+                "-ss", str(segment * SEGMENT_DURATION - 10), "-t", str(SEGMENT_DURATION),
+                "-c:v", "libx264", "-c:a", "aac",
+                "-output_ts_offset", str(segment * SEGMENT_DURATION - 10),
+                #"-reset_timestamps", "1", "-force_key_frames", f"expr:gte(t,n_forced*{SEGMENT_DURATION})",
+                "-f", "mpegts", str(segment_path.as_posix())
+            ])
+
+
+        finally:
+            lock_file.unlink()  # Remove lock file after encoding completes
+
+@video.route('/video/<video_id>/<resolution>/play.m3u8')
+def get_video(video_id, resolution):
+    """
+    Serve the HLS master playlist.
+    """
+    download_youtube_video(video_id)  # Ensure video is downloaded
+
+    # Get video length and create placeholder master playlist
+    input_path = Path(CACHE_DIR) / video_id / "original.mp4"
+    video_length = get_video_length(input_path)
+    total_segments = math.ceil(video_length / SEGMENT_DURATION)
+
+    create_master_playlist(video_id, resolution, total_segments)
+    playlist_path = Path(CACHE_DIR) / video_id / resolution / "master.m3u8"
+    
+    if playlist_path.exists():
+        with open(playlist_path, 'r') as file:
+            return Response(file.read(), mimetype="application/vnd.apple.mpegurl")
+    else:
+        abort(404, "Failed to create master playlist")
+
+@video.route('/video/<video_id>/<resolution>/<int:segment>.ts')
+def get_segment(video_id, resolution, segment):
+    """
+    Serve or encode individual video segments for HLS on-demand, 
+    and start encoding future segments.
+    """
+    output_dir = Path(CACHE_DIR) / video_id / resolution
+    segment_path = output_dir / f"{segment}.ts"
+
+    # If segment doesn’t exist, start encoding it on-demand in a separate thread
+    if not segment_path.exists():
+        # Start encoding the requested segment immediately
+        threading.Thread(target=encode_segment, args=(video_id, resolution, segment, segment)).start()
+
+    # Start encoding future segments asynchronously
+    future_start = segment + 1
+    future_end = future_start + FUTURE_SEGMENTS - 1
+    threading.Thread(target=encode_segment, args=(video_id, resolution, future_start, future_end)).start()
+
+    # Wait for the requested segment to be fully encoded and available
+    while not segment_path.exists():
+        time.sleep(0.5)  # Check every 500ms
+
+    # Once the segment is available, serve it
+    return send_file(segment_path, as_attachment=True)
 
 @video.route("/feeds/api/videos/<video_id>/related")
 @video.route("/<int:res>/feeds/api/videos/<video_id>/related")

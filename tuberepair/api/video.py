@@ -214,6 +214,10 @@ def getvideo(video_id, res=360):
     
     # # 360p if enabled
     # return redirect(yt.medium_quality_video_url(video_id), 307)
+    # sanity_check_path = Path(CACHE_DIR) / "helpme.3gp"
+    # return send_file(sanity_check_path, as_attachment=True, mimetype="video/3gpp")
+    # with open(playlist_path, 'r') as file:
+    #         return Response(file.read(), mimetype="video/3gpp")
     return redirect(f"/video/{video_id}/{res}/play.m3u8", 307)
 
 def download_youtube_video(video_id):
@@ -244,7 +248,7 @@ def get_video_length(video_path):
     )
     return float(result.stdout.strip())
 
-def create_master_playlist(video_id, resolution, total_segments):
+def create_master_playlist(video_id, resolution, total_segments, video_length):
     """
     Create a placeholder master playlist with the expected number of segments.
     """
@@ -261,11 +265,16 @@ def create_master_playlist(video_id, resolution, total_segments):
         #f.write("#EXT-X-INDEPENDENT-SEGMENTS\n")
 
         # List all segments expected for the video duration
-        for segment in range(total_segments):
+        for segment in range(total_segments-1):
             #f.write("#EXT-X-DISCONTINUITY\n")
-            f.write(f"#EXTINF:{SEGMENT_DURATION},\n")
+            f.write(f"#EXTINF:{format(SEGMENT_DURATION, '.3f')},\n")
             f.write(f"{segment}.ts\n")
 
+        #Special case for the last segment
+        f.write(f"#EXTINF:{format(video_length % SEGMENT_DURATION, '.3f')},\n")    
+        f.write(f"{total_segments-1}.ts\n")
+
+        # End of the playlist
         f.write("#EXT-X-ENDLIST\n")
 
 def encode_segment(video_id, resolution, start_segment, end_segment):
@@ -313,12 +322,15 @@ def get_video(video_id, resolution):
     video_length = get_video_length(input_path)
     total_segments = math.ceil(video_length / SEGMENT_DURATION)
 
-    create_master_playlist(video_id, resolution, total_segments)
+    create_master_playlist(video_id, resolution, total_segments, video_length)
     playlist_path = Path(CACHE_DIR) / video_id / resolution / "master.m3u8"
     
+
     if playlist_path.exists():
-        with open(playlist_path, 'r') as file:
-            return Response(file.read(), mimetype="application/vnd.apple.mpegurl")
+        return send_file(playlist_path, as_attachment=True, mimetype="video/mpegurl")
+        # with open(playlist_path, 'r') as file:
+            
+        #     #return Response(file.read(), mimetype="application/vnd.apple.mpegurl")
     else:
         abort(404, "Failed to create master playlist")
 
@@ -346,7 +358,7 @@ def get_segment(video_id, resolution, segment):
         time.sleep(0.5)  # Check every 500ms
 
     # Once the segment is available, serve it
-    return send_file(segment_path, as_attachment=True)
+    return send_file(segment_path, as_attachment=True, mimetype="video/MP2T")
 
 @video.route("/feeds/api/videos/<video_id>/related")
 @video.route("/<int:res>/feeds/api/videos/<video_id>/related")

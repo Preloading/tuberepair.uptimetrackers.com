@@ -1,5 +1,8 @@
+import os
+
+import ffmpeg
 from modules import get, helpers
-from flask import Blueprint, Flask, request, redirect, render_template, Response
+from flask import Blueprint, Flask, request, redirect, render_template, Response, send_file
 import config
 from modules.logs import print_with_seperator
 from modules import yt
@@ -233,7 +236,64 @@ def getvideo(video_id, res=None):
         return Response(yt.hls_video_url(video_id, res), mimetype="application/vnd.apple.mpegurl")
     
     # 360p if enabled
-    return redirect(yt.medium_quality_video_url(video_id), 307)
+    return redirect(f"/convert/{video_id}", 307)
+
+def convert_video(input_url, output_path):
+    # FFmpeg conversion for iPhone 3G compatibility
+    ffmpeg.input(input_url).output(
+        output_path,
+        vcodec='libx264',
+        profile='baseline',
+        level='3.0',
+        acodec='aac',
+        movflags='+faststart',
+        video_bitrate='500k',     # Adjust if needed
+        maxrate='500k',
+        bufsize='1000k',
+        g=30,                     # Set GOP size
+        bf=0,                     # Disable B-frames
+        keyint_min=30,            # Keyframe interval
+        s='480x320'               # Output resolution for iPhone 3G
+    ).run()
+
+
+@video.route('/convert/<video_id>')
+def convert_and_stream(video_id):
+    # Path setup
+    output_path = f'./cache/videos/{video_id}.mp4'
+    input_url = yt.medium_quality_video_url(video_id)
+
+    # Convert if not already cached
+    if not os.path.exists(output_path):
+        convert_video(input_url, output_path)
+
+    # Serve with HTTP 206
+    return partial_content_response(output_path)
+
+def partial_content_response(path):
+    file_size = os.path.getsize(path)
+    range_header = request.headers.get('Range', None)
+    if not range_header:
+        # If no Range header, serve the entire file
+        return send_file(path, as_attachment=True)
+
+    start, end = range_header.replace('bytes=', '').split('-')
+    start = int(start)
+    end = int(end) if end else file_size - 1
+    length = end - start + 1
+
+    with open(path, 'rb') as f:
+        f.seek(start)
+        data = f.read(length)
+
+    headers = {
+        'Content-Range': f'bytes {start}-{end}/{file_size}',
+        'Accept-Ranges': 'bytes',
+        'Content-Length': str(length),
+        'Content-Type': 'video/mp4'
+    }
+
+    return Response(data, status=206, headers=headers)
 
 @video.route("/feeds/api/videos/<video_id>/related")
 @video.route("/<int:res>/feeds/api/videos/<video_id>/related")

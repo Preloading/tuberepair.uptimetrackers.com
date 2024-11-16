@@ -16,6 +16,13 @@ if "MEDIUM_QUALITY" in OSEnv:
 else:
     MEDIUM_QUALITY = True
 
+# gets 360p by default is user doesn't provide a resolution
+# NOTE: loads a ton faster
+if "REENCODE_VIDEO" in OSEnv:
+    REENCODE_VIDEO = helpers.string_to_bool(OSEnv["REENCODE_VIDEO"])
+else:
+    REENCODE_VIDEO = True
+
 
 if "GET_ERROR_LOGGING" in OSEnv:
     GET_ERROR_LOGGING = helpers.string_to_bool(OSEnv["GET_ERROR_LOGGING"])

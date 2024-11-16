@@ -1,4 +1,6 @@
 import os
+import subprocess
+import asyncio
 
 import ffmpeg
 from modules import get, helpers
@@ -9,8 +11,11 @@ from modules import yt
 import threading
 import time
 
+from pytube import Caption, YouTube
+
 video = Blueprint("video", __name__)
 videos_dict = {}
+ffmpeg_processes = list()
 
 def error():
     return "",404
@@ -193,7 +198,6 @@ def comments(videoid, res=''):
             'video_id': videoid
         })
 
-    return error()
 
 def add_route(item):
     item_hash = hash(item)
@@ -227,7 +231,6 @@ def getURLFinal(item_hash):
 @video.route("/<int:res>/getvideo/<video_id>")
 def getvideo(video_id, res=None):
     if res is not None or config.MEDIUM_QUALITY is False:
-        
         # Clamp Res
         if type(res) == int:
             res = min(max(res, 144), config.RESMAX)
@@ -236,64 +239,51 @@ def getvideo(video_id, res=None):
         return Response(yt.hls_video_url(video_id, res), mimetype="application/vnd.apple.mpegurl")
     
     # 360p if enabled
-    return redirect(f"/convert/{video_id}", 307)
-
-def convert_video(input_url, output_path):
+    if config.REENCODE_VIDEO:
+        return redirect(f"/convert/{video_id}", 307)
+    else:
+        return redirect(yt.medium_quality_video_url(video_id), 307)
+    
+def convert_video(input_url, output_path, res=360):
     # FFmpeg conversion for iPhone 3G compatibility
-    ffmpeg.input(input_url).output(
-        output_path,
-        vcodec='libx264',
-        profile='baseline',
-        level='3.0',
-        acodec='aac',
-        movflags='+faststart',
-        video_bitrate='500k',     # Adjust if needed
-        maxrate='500k',
-        bufsize='1000k',
-        g=30,                     # Set GOP size
-        bf=0,                     # Disable B-frames
-        keyint_min=30,            # Keyframe interval
-        s='480x320'               # Output resolution for iPhone 3G
-    ).run()
+    subprocess.run([
+        'ffmpeg',
+        '-i', input_url,
+        '-r', '24',         # Set frame rate
+        '-vcodec', 'libx264',
+        '-profile:v', 'baseline',
+        '-movflags', '+faststart',
+        '-c:a', 'copy',     # Copy audio codec
+        '-b:v', '500k',
+        '-minrate', '500k',
+        '-maxrate', '500k',
+        '-bufsize', '1000k',
+        '-g', '48',
+        '-keyint_min', '48',
+        '-vf', f'scale=-1:{res}',
+        output_path
+    ])
 
 
 @video.route('/convert/<video_id>')
-def convert_and_stream(video_id):
+@video.route('/<int:res>/convert/<video_id>')
+def convert_and_stream(video_id, res=360):
+    # Clamp Res
+    if type(res) == int:
+        res = min(max(res, 144), config.RESMAX)
+
     # Path setup
-    output_path = f'./cache/videos/{video_id}.mp4'
+    output_path = f'./cache/videos/{res}/{video_id}.mp4'
     input_url = yt.medium_quality_video_url(video_id)
 
     # Convert if not already cached
     if not os.path.exists(output_path):
-        convert_video(input_url, output_path)
+        if not os.path.exists(f'./cache/videos/{res}/'):
+            os.makedirs(f'./cache/videos/{res}/')
+        convert_video(input_url, output_path, res)
 
     # Serve with HTTP 206
-    return partial_content_response(output_path)
-
-def partial_content_response(path):
-    file_size = os.path.getsize(path)
-    range_header = request.headers.get('Range', None)
-    if not range_header:
-        # If no Range header, serve the entire file
-        return send_file(path, as_attachment=True)
-
-    start, end = range_header.replace('bytes=', '').split('-')
-    start = int(start)
-    end = int(end) if end else file_size - 1
-    length = end - start + 1
-
-    with open(path, 'rb') as f:
-        f.seek(start)
-        data = f.read(length)
-
-    headers = {
-        'Content-Range': f'bytes {start}-{end}/{file_size}',
-        'Accept-Ranges': 'bytes',
-        'Content-Length': str(length),
-        'Content-Type': 'video/mp4'
-    }
-
-    return Response(data, status=206, headers=headers)
+    return send_file(output_path)
 
 @video.route("/feeds/api/videos/<video_id>/related")
 @video.route("/<int:res>/feeds/api/videos/<video_id>/related")
@@ -312,6 +302,9 @@ def get_suggested(video_id, res=''):
             data = None
         else:
             data = data['recommendedVideos']
+
+            for video in data: # the query doesn't return published date, so we'll have to add it ourselves
+                video['published'] = 1134604800
         # classic tube check
         if "YouTube v1.0.0" in user_agent:
             return get.template('classic/search.jinja2',{

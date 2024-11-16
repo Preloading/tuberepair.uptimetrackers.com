@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 import ffmpeg
 from modules import get, helpers
@@ -8,6 +9,7 @@ from modules.logs import print_with_seperator
 from modules import yt
 
 video = Blueprint("video", __name__)
+ffmpeg_processes = list()
 
 def error():
     return "",404
@@ -204,25 +206,80 @@ def getvideo(video_id, res=None):
         return Response(yt.hls_video_url(video_id, res), mimetype="application/vnd.apple.mpegurl")
     
     # 360p if enabled
+    #yt.hls_video_url(video_id, res)
     return redirect(f"/convert/{video_id}", 307)
+    #return send_file("./cache/videos/ios_video2.mp4", as_attachment=True)
 
 def convert_video(input_url, output_path):
     # FFmpeg conversion for iPhone 3G compatibility
-    ffmpeg.input(input_url).output(
-        output_path,
-        vcodec='libx264',
-        profile='baseline',
-        level='3.0',
-        acodec='aac',
-        movflags='+faststart',
-        video_bitrate='500k',     # Adjust if needed
-        maxrate='500k',
-        bufsize='1000k',
-        g=30,                     # Set GOP size
-        bf=0,                     # Disable B-frames
-        keyint_min=30,            # Keyframe interval
-        s='480x320'               # Output resolution for iPhone 3G
-    ).run()
+    result = subprocess.run([
+        'ffmpeg',
+        '-i', input_url,
+        '-r', '24',         # Set frame rate
+        '-vcodec', 'libx264',
+        '-profile:v', 'baseline',
+        # '-level', '2.0',
+        #'-preset', 'fast',
+        # '-crf', '5',
+        '-c:a', 'copy',     # Audio codec
+        #'-s', '640x320',    # Output resolution for iPhone 3G
+        '-b:v', '500k',     # Adjust if needed
+        # '-q:v', '5',
+        # '-level', '3.0',
+        # '-acodec', 'aac',
+        # '-movflags', '+faststart',
+        # '-b:v', '500k',     # Adjust if needed
+        # '-maxrate', '500k',
+        # '-bufsize', '1000k',
+        # '-g', '30',         # Set GOP size
+        # '-bf', '0',         # Disable B-frames
+        # '-keyint_min', '30',# Keyframe interval
+        '-vf', 'scale=-1:360',
+        #'-s', '480x320',    # Output resolution for iPhone 3G
+        output_path
+    ])
+
+    #     # FFmpeg conversion for iPhone 3G compatibility
+    # result = subprocess.run([
+    #     'ffmpeg',
+    #     '-i', input_url,
+    #     '-r', '24',         # Set frame rate
+    #     '-c:v', 'mpeg4',  # Video codec
+    #     #'-preset', 'fast',
+    #     '-crf', '5',
+    #     '-c:a', 'copy',     # Audio codec
+    #     #'-s', '640x320',    # Output resolution for iPhone 3G
+    #     # '-vcodec', 'libx264',
+    #     # '-profile:v', 'baseline',
+    #     # '-level', '3.0',
+    #     # '-acodec', 'aac',
+    #     # '-movflags', '+faststart',
+    #     # '-b:v', '500k',     # Adjust if needed
+    #     # '-maxrate', '500k',
+    #     # '-bufsize', '1000k',
+    #     # '-g', '30',         # Set GOP size
+    #     # '-bf', '0',         # Disable B-frames
+    #     # '-keyint_min', '30',# Keyframe interval
+    #     # '-s', '480x320',    # Output resolution for iPhone 3G
+    #     output_path
+    # ])
+    # ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    #result.stdout
+    # ffmpeg.input(input_url).output(
+    #     output_path,
+    #     vcodec='libx264',
+    #     profile='baseline',
+    #     level='3.0',
+    #     acodec='aac',
+    #     movflags='+faststart',
+    #     video_bitrate='500k',     # Adjust if needed
+    #     maxrate='500k',
+    #     bufsize='1000k',
+    #     g=30,                     # Set GOP size
+    #     bf=0,                     # Disable B-frames
+    #     keyint_min=30,            # Keyframe interval
+    #     s='480x320'               # Output resolution for iPhone 3G
+    # ).run()
 
 
 @video.route('/convert/<video_id>')

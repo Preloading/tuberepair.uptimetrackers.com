@@ -37,8 +37,8 @@ def hls_video_url(video_id, res=None):
     # fetch innertube
     data = session.post('https://www.youtube.com/youtubei/v1/player?key=' + api_key, json=json_data, headers=header_data, proxies=helpers.proxies).json()
     # get video's m3u8 to process it.
-    panda = session.get(data["streamingData"]["hlsManifestUrl"], proxies=helpers.proxies).text.split("\n")
-
+    panda = session.get(data["streamingData"]["hlsManifestUrl"], proxies=helpers.proxies).text
+    print(panda)
     # regex filter
     formatfilter = re.compile(r"^#EXT-X-STREAM-INF:BANDWIDTH=(?P<bandwidth>\d+),CODECS=\"(?P<codecs>[^\"]+)\",RESOLUTION=(?P<width>\d+)x(?P<height>\d+),FRAME-RATE=(?P<fps>\d+),VIDEO-RANGE=(?P<videoRange>[^,]+),AUDIO=\"(?P<audioGroup>[^\"]+)\"(,SUBTITLES=\"(?P<subGroup>[^\"]+)\")?")
     vertical = None

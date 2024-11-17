@@ -218,24 +218,15 @@ def convert_video(input_url, output_path):
         '-r', '24',         # Set frame rate
         '-vcodec', 'libx264',
         '-profile:v', 'baseline',
-        # '-level', '2.0',
-        #'-preset', 'fast',
-        # '-crf', '5',
-        '-c:a', 'copy',     # Audio codec
-        #'-s', '640x320',    # Output resolution for iPhone 3G
-        '-b:v', '500k',     # Adjust if needed
-        # '-q:v', '5',
-        # '-level', '3.0',
-        # '-acodec', 'aac',
-        # '-movflags', '+faststart',
-        # '-b:v', '500k',     # Adjust if needed
-        # '-maxrate', '500k',
-        # '-bufsize', '1000k',
-        # '-g', '30',         # Set GOP size
-        # '-bf', '0',         # Disable B-frames
-        # '-keyint_min', '30',# Keyframe interval
+        '-movflags', '+faststart',
+        '-c:a', 'copy',     # Copy audio codec
+        '-b:v', '500k',
+        '-minrate', '500k',
+        '-maxrate', '500k',
+        '-bufsize', '1000k',
+        '-g', '48',
+        '-keyint_min', '48',
         '-vf', 'scale=-1:360',
-        #'-s', '480x320',    # Output resolution for iPhone 3G
         output_path
     ])
 

@@ -260,7 +260,7 @@ def convert_video(input_url, output_path, res=360):
         '-bufsize', '1000k',
         '-g', '48',
         '-keyint_min', '48',
-        '-vf', f'scale=-1:{res}',
+        '-vf', 'scale=-1:360',
         output_path
     ])
 

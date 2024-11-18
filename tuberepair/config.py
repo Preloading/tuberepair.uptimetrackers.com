@@ -16,6 +16,12 @@ if "MEDIUM_QUALITY" in OSEnv:
 else:
     MEDIUM_QUALITY = True
 
+# allows classic youtube to work
+if "REINCODE_VIDEO" in OSEnv:
+    REENCODE_VIDEO = helpers.string_to_bool(OSEnv["REINCODE_VIDEO"])
+else:
+    REENCODE_VIDEO = True
+
 
 if "GET_ERROR_LOGGING" in OSEnv:
     GET_ERROR_LOGGING = helpers.string_to_bool(OSEnv["GET_ERROR_LOGGING"])

@@ -16,10 +16,9 @@ if "MEDIUM_QUALITY" in OSEnv:
 else:
     MEDIUM_QUALITY = True
 
-# gets 360p by default is user doesn't provide a resolution
-# NOTE: loads a ton faster
-if "REENCODE_VIDEO" in OSEnv:
-    REENCODE_VIDEO = helpers.string_to_bool(OSEnv["REENCODE_VIDEO"])
+# allows classic youtube to work
+if "REINCODE_VIDEO" in OSEnv:
+    REENCODE_VIDEO = helpers.string_to_bool(OSEnv["REINCODE_VIDEO"])
 else:
     REENCODE_VIDEO = True
 

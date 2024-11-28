@@ -12,6 +12,10 @@ from .logs import print_with_seperator
 # cache to not spam the invidious instance
 session = CachedSession('cache/info', expire_after=timedelta(hours=1))
 
+def youtube_date(date):
+    # Opisite of the function below
+    return datetime.strptime(date, '%Y-%m-%dT%H:%M:%S.%fZ').timestamp()
+
 def unix(unix):
     return datetime.fromtimestamp(int(unix)).isoformat() + '.000Z'
 

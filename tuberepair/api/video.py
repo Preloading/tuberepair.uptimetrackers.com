@@ -12,6 +12,7 @@ import threading
 import time
 
 from pytube import Caption, YouTube
+import aiohttp
 
 video = Blueprint("video", __name__)
 videos_dict = {}
@@ -19,6 +20,15 @@ ffmpeg_processes = list()
 
 def error():
     return "",404
+
+async def fetch_rating(session, video_id):
+    async with session.get(f"https://returnyoutubedislikeapi.com/votes?videoId={video_id}") as response:
+        return await response.json()
+
+async def fetch_ratings(data):
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_rating(session, video['videoId']) for video in data]
+        return await asyncio.gather(*tasks)
 
 # featured videos
 # 2 alternate routes for popular page and search results
@@ -61,13 +71,16 @@ def frontpage(regioncode="US", popular=None, res=''):
         if config.SPYING == True:
             print_with_seperator("Region code: " + regioncode)
 
-        for video in data[:15]:
-            rating = get.fetch("https://returnyoutubedislikeapi.com/votes?videoId=" + video['videoId'])
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        ratings = loop.run_until_complete(fetch_ratings(data[:15]))
+
+        for video, rating in zip(data[:15], ratings):
             if rating:
                 video['likes'] = rating['likes']
                 video['dislikes'] = rating['dislikes']
             else:
-                video['likes'] = 8101
+                video['likes'] = 0
                 video['dislikes'] = 0
 
         # Classic YT path
@@ -156,14 +169,16 @@ def search_videos(res=''):
     if not data:
         next_page = None
 
-    # Likes & Dislikes
-    for video in data:
-        rating = get.fetch("https://returnyoutubedislikeapi.com/votes?videoId=" + video['videoId'])
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    ratings = loop.run_until_complete(fetch_ratings(data))
+
+    for video, rating in zip(data, ratings):
         if rating:
             video['likes'] = rating['likes']
             video['dislikes'] = rating['dislikes']
         else:
-            video['likes'] = 8101
+            video['likes'] = 0
             video['dislikes'] = 0
 
     # classic tube check
@@ -324,15 +339,18 @@ def get_suggested(video_id, res=''):
         else:
             data = data['recommendedVideos']
 
-        for video in data:
-            rating = get.fetch("https://returnyoutubedislikeapi.com/votes?videoId=" + video['videoId'])
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        ratings = loop.run_until_complete(fetch_ratings(data))
+
+        for video, rating in zip(data, ratings):
             if rating:
                 video['likes'] = rating['likes']
                 video['dislikes'] = rating['dislikes']
                 # Since the query doesn't return published date, we'll have to add it ourselves, with data from return youtube dislike api (so convient!) Also this doesn't acutally ever show up...
                 video['published'] = get.youtube_date(rating['dateCreated'])
             else:
-                video['likes'] = 8101
+                video['likes'] = 0
                 video['dislikes'] = 0
                 video['published'] = 0
         

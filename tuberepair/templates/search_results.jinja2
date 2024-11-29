@@ -88,7 +88,7 @@
 			<gd:rating average='0' max='0' min='0' numRaters='0' rel='https://schemas.google.com/g/2005#overall'/>
 			<yt:recorded>1970-08-22</yt:recorded>
 			<yt:statistics favoriteCount='0' viewCount="{{info['viewCount']}}"/>
-			<yt:rating numDislikes='100' numLikes='10000'/>
+			<yt:rating numDislikes='{{video["dislikes"]}}' numLikes='{{video["likes"]}}'/>
 			<yt:position>1</yt:position>
 		</entry>
 	{% endfor %}

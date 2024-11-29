@@ -50,8 +50,8 @@
       <yt:accessControl action="syndicate" permission="allowed" />
       <gd:comments><gd:feedLink href='{{url}}/api/videos/{{info['videoId']}}/comments'/></gd:comments>
       <yt:statistics favoriteCount="0" viewCount="{{info['viewCount']}}" />
-  <gd:rating average="5" max="5" min="1" numRaters="15027" rel="http://schemas.google.com/g/2005#overall" />
-      <yt:rating numDislikes="0" numLikes="15027" />
+  <gd:rating average="5" max="5" min="1" numRaters="{{info['likes'] + info['dislikes']}}" rel="http://schemas.google.com/g/2005#overall" />
+      <yt:rating numDislikes="{{info['dislikes']}}" numLikes="{{info['likes']}}" />
   <yt:hd />
       <media:group>
         <media:category label="Entertainment" scheme="http://gdata.youtube.com/schemas/2007/categories.cat">Entertainment</media:category>

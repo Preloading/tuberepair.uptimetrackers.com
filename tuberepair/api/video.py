@@ -42,6 +42,8 @@ def frontpage(regioncode="US", popular=None, res=''):
         apiurl = f"{config.URL}/api/v1/trending?type=Gaming&region={regioncode}"
     if popular == "most_popular_Music":
         apiurl = f"{config.URL}/api/v1/trending?type=Music&region={regioncode}"    
+    if popular == "most_viewed":
+        apiurl = f"{config.URL}/api/v1/popular?region={regioncode}"
 
     # fetch api from invidious
     data = get.fetch(apiurl)
@@ -58,6 +60,15 @@ def frontpage(regioncode="US", popular=None, res=''):
         # print logs if enabled
         if config.SPYING == True:
             print_with_seperator("Region code: " + regioncode)
+
+        for video in data[:15]:
+            rating = get.fetch("https://returnyoutubedislikeapi.com/votes?videoId=" + video['videoId'])
+            if rating:
+                video['likes'] = rating['likes']
+                video['dislikes'] = rating['dislikes']
+            else:
+                video['likes'] = 8101
+                video['dislikes'] = 0
 
         # Classic YT path
         if "youtube/1.0.0" in user_agent or "youtube v1.0.0" in user_agent:
@@ -144,6 +155,16 @@ def search_videos(res=''):
 
     if not data:
         next_page = None
+
+    # Likes & Dislikes
+    for video in data:
+        rating = get.fetch("https://returnyoutubedislikeapi.com/votes?videoId=" + video['videoId'])
+        if rating:
+            video['likes'] = rating['likes']
+            video['dislikes'] = rating['dislikes']
+        else:
+            video['likes'] = 8101
+            video['dislikes'] = 0
 
     # classic tube check
     if "youtube/1.0.0" in user_agent or "youtube v1.0.0" in user_agent:
@@ -303,8 +324,19 @@ def get_suggested(video_id, res=''):
         else:
             data = data['recommendedVideos']
 
-            for video in data: # the query doesn't return published date, so we'll have to add it ourselves
-                video['published'] = 1134604800
+        for video in data:
+            rating = get.fetch("https://returnyoutubedislikeapi.com/votes?videoId=" + video['videoId'])
+            if rating:
+                video['likes'] = rating['likes']
+                video['dislikes'] = rating['dislikes']
+                # Since the query doesn't return published date, we'll have to add it ourselves, with data from return youtube dislike api (so convient!) Also this doesn't acutally ever show up...
+                video['published'] = get.youtube_date(rating['dateCreated'])
+            else:
+                video['likes'] = 8101
+                video['dislikes'] = 0
+                video['published'] = 0
+        
+            
         # classic tube check
         if "YouTube v1.0.0" in user_agent:
             return get.template('classic/search.jinja2',{
